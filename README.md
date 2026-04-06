@@ -1,3 +1,7 @@
+<img width="1707" height="1148" alt="Screenshot 2026-04-06 at 7 49 20 PM" src="https://github.com/user-attachments/assets/1f840071-01bf-443a-8e00-19924a0d8ae8" />
+
+
+
 # Apex CRM Sales Intelligence
 
 A RAG-powered sales intelligence assistant built with LangChain and Claude. It answers competitive questions by searching internal battlecards and playbooks, live web data, or both — depending on what the question needs.
