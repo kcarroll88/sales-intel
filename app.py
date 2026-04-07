@@ -96,6 +96,10 @@ header { display: none !important; }
     transform: none !important;
     box-shadow: none !important;
 }
+small[data-testid="InputInstructions"],
+[data-testid="InputInstructions"],
+.stTextInput div[data-testid="InputInstructions"],
+.stForm small { display: none !important; }
 
 [data-testid="stForm"] {
     border: none !important;

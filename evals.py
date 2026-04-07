@@ -1,6 +1,8 @@
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
 import anthropic
+from agent import search_knowledge_base, search_web
 
 load_dotenv()
 
@@ -10,41 +12,37 @@ client = anthropic.Anthropic()
 def evaluate_answer(question: str, answer: str, context: str = "") -> dict:
     """Use Claude to evaluate the quality of an agent answer."""
     
-    prompt = f"""You are an expert evaluator for AI agent responses. 
-Evaluate the following answer based on three criteria.
+    context_section = f"Source Documents Retrieved:\n{context}\n\n" if context else ""
 
-Question: {question}
-
-Answer: {answer}
-
-{f"Context/Sources Used: {context}" if context else ""}
-
-Score the answer on each criterion from 1-5:
-
-1. RELEVANCE (1-5): Does the answer directly address the question asked?
-   1 = Completely off topic
-   3 = Partially addresses the question  
-   5 = Directly and fully addresses the question
-
-2. GROUNDEDNESS (1-5): Is the answer based on actual retrieved information rather than hallucination?
-   1 = Completely fabricated
-   3 = Mix of retrieved and assumed information
-   5 = Fully grounded in retrieved sources
-
-3. COMPLETENESS (1-5): Does the answer cover the key points needed to fully answer the question?
-   1 = Missing most key information
-   3 = Covers some key points
-   5 = Comprehensive and complete
-
-Respond in this exact format:
-RELEVANCE: [score]
-GROUNDEDNESS: [score]
-COMPLETENESS: [score]
-REASONING: [one sentence explaining the scores]
-OVERALL: [PASS if average >= 3.5, FAIL if average < 3.5]"""
+    prompt = (
+        "You are an expert evaluator for AI agent responses. \n"
+        "Evaluate the following answer based on three criteria.\n\n"
+        f"Question: {question}\n\n"
+        f"Answer: {answer}\n\n"
+        + context_section +
+        "Score the answer on each criterion from 1-5:\n\n"
+        "1. RELEVANCE (1-5): Does the answer directly address the question asked?\n"
+        "   1 = Completely off topic\n"
+        "   3 = Partially addresses the question\n"
+        "   5 = Directly and fully addresses the question\n\n"
+        "2. GROUNDEDNESS (1-5): Is the answer based on the source documents provided above?\n"
+        "   1 = Contradicts or ignores the sources\n"
+        "   3 = Partially uses the sources\n"
+        "   5 = Fully grounded in the provided sources\n\n"
+        "3. COMPLETENESS (1-5): Does the answer cover the key points needed to fully answer the question?\n"
+        "   1 = Missing most key information\n"
+        "   3 = Covers some key points\n"
+        "   5 = Comprehensive and complete\n\n"
+        "Respond in this exact format:\n"
+        "RELEVANCE: [score]\n"
+        "GROUNDEDNESS: [score]\n"
+        "COMPLETENESS: [score]\n"
+        "REASONING: [one sentence explaining the scores]\n"
+        "OVERALL: [PASS if average >= 3.5, FAIL if average < 3.5]"
+    )
 
     response = client.messages.create(
-        model="claude-opus-4-5",
+        model="claude-haiku-4-5-20251001",
         max_tokens=300,
         messages=[{"role": "user", "content": prompt}]
     )
@@ -94,24 +92,54 @@ def run_evals(agent_executor):
         },
         {
             "input": "What is the weather like today?",
-            "description": "Out of scope — should gracefully handle irrelevant question"
+            "description": "Out of scope — should gracefully handle irrelevant question",
+            "out_of_scope": True
         }
     ]
 
+    def run_single_eval(args):
+        i, test = args
+        answer = agent_executor(test["input"])
+
+        if test.get("out_of_scope"):
+            refused = any(phrase in answer.lower() for phrase in [
+                "focused on sales", "can't help with", "outside",
+                "not able to", "sales intelligence"
+            ])
+            scores = {
+                "relevance": 5 if refused else 1,
+                "groundedness": 5,
+                "completeness": 5 if refused else 1,
+                "average": 5.0 if refused else 1.0,
+                "reasoning": "Agent correctly refused out-of-scope question" if refused else "Agent should have refused",
+                "passed": refused
+            }
+            return i, test, scores
+
+        web_search_keywords = ["news", "recent", "announced", "latest", "2026"]
+        is_web_question = any(word in test["input"].lower() for word in web_search_keywords)
+
+        if is_web_question:
+            context = search_web(test["input"])  # pass actual web results as context
+        else:
+            context = search_knowledge_base(test["input"])
+
+        scores = evaluate_answer(test["input"], answer, context)
+        return i, test, scores
+
+    results_map = {}
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = {executor.submit(run_single_eval, (i, test)): i for i, test in enumerate(test_cases)}
+        for future in as_completed(futures):
+            i, test, scores = future.result()
+            results_map[i] = (test, scores)
+
     results = []
-    for i, test in enumerate(test_cases):
+    for i in range(len(test_cases)):
+        test, scores = results_map[i]
         print(f"\nEval {i+1}: {test['description']}")
         print(f"Q: {test['input']}")
-        
-        answer = agent_executor(test["input"])
-        
-        scores = evaluate_answer(
-            question=test["input"],
-            answer=answer
-        )
-        
         results.append(scores["passed"])
-        
         print(f"Relevance:     {scores.get('relevance')}/5")
         print(f"Groundedness:  {scores.get('groundedness')}/5")
         print(f"Completeness:  {scores.get('completeness')}/5")
