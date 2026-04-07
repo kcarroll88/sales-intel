@@ -10,7 +10,7 @@ from tavily import TavilyClient
 import chromadb
 import voyageai
 
-load_dotenv()
+load_dotenv(override=False)
 
 # ── CLIENTS ───────────────────────────────────────────────────────────────────
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
