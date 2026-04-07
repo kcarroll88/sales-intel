@@ -103,8 +103,7 @@ def run_evals(agent_executor):
         print(f"\nEval {i+1}: {test['description']}")
         print(f"Q: {test['input']}")
         
-        result = agent_executor.invoke({"input": test["input"]})
-        answer = result["output"]
+        answer = agent_executor(test["input"])
         
         scores = evaluate_answer(
             question=test["input"],

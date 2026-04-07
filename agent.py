@@ -105,8 +105,22 @@ tools = [
 ]
 
 # ── 3. AGENT ──────────────────────────────────────────────────────────────────
-def build_agent():
-    template = """Answer the following questions as best you can. You have access to the following tools:
+SYSTEM_PROMPT = (
+    "You are a sales intelligence assistant for Apex CRM, focused exclusively on "
+    "sales, CRM, and competitive intelligence topics. If someone asks about anything "
+    "unrelated to sales, CRM, or competitive intelligence, respond with: "
+    "\"I'm focused on sales intelligence for Apex CRM. I can help with competitor "
+    "analysis, deal strategy, objection handling, and market intelligence. "
+    "What sales question can I help you with?\""
+)
+
+_agent_executor = None
+
+def _build_executor():
+    global _agent_executor
+    template = SYSTEM_PROMPT + """
+
+You have access to the following tools:
 
 {tools}
 
@@ -128,13 +142,23 @@ Thought:{agent_scratchpad}"""
 
     prompt = PromptTemplate.from_template(template)
     agent = create_react_agent(llm, tools, prompt)
-    return AgentExecutor(
+    _agent_executor = AgentExecutor(
         agent=agent,
         tools=tools,
         verbose=True,
         max_iterations=5,
         handle_parsing_errors=True
     )
+
+def run_agent(query: str) -> str:
+    global _agent_executor
+    if _agent_executor is None:
+        _build_executor()
+    result = _agent_executor.invoke({"input": query})
+    return result["output"]
+
+def build_agent():
+    return run_agent
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":

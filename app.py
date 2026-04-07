@@ -9,6 +9,151 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# ── AUTH ──────────────────────────────────────────────────────────────────────
+def check_password():
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    if not st.session_state.authenticated:
+        st.markdown("""
+<style>
+[data-testid="stSidebar"],
+[data-testid="stHeader"],
+[data-testid="stToolbar"],
+header { display: none !important; }
+
+[data-testid="stAppViewContainer"] {
+    background: #fafafa !important;
+    min-height: 100vh;
+}
+
+.main .block-container {
+    padding-top: 15vh !important;
+}
+
+.login-header {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+.login-logo {
+    width: 40px; height: 40px;
+    background: #18181b;
+    border-radius: 10px;
+    display: inline-flex; align-items: center; justify-content: center;
+    margin-bottom: 1.25rem;
+}
+.login-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: #18181b;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.25rem;
+}
+.login-subtitle {
+    font-size: 0.8125rem;
+    color: #71717a;
+}
+
+.stTextInput input {
+    background: #ffffff !important;
+    border: 1px solid #e4e4e7 !important;
+    border-radius: 8px !important;
+    font-size: 0.9375rem !important;
+    color: #18181b !important;
+    padding: 0.6rem 0.75rem !important;
+    box-shadow: none !important;
+    transition: border-color 0.15s ease !important;
+}
+.stTextInput input:focus {
+    border-color: #a1a1aa !important;
+    box-shadow: 0 0 0 3px rgba(24,24,27,0.06) !important;
+    outline: none !important;
+}
+.stTextInput input::placeholder { color: #a1a1aa !important; }
+
+.stFormSubmitButton > button {
+    background: #18181b !important;
+    color: #ffffff !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-size: 0.875rem !important;
+    font-weight: 500 !important;
+    padding: 0.6rem 1rem !important;
+    width: 100% !important;
+    box-shadow: none !important;
+    transition: background 0.15s ease !important;
+    margin-top: 0.25rem !important;
+    letter-spacing: -0.01em !important;
+}
+.stFormSubmitButton > button:hover {
+    background: #27272a !important;
+    color: #ffffff !important;
+    box-shadow: none !important;
+    transform: none !important;
+}
+.stFormSubmitButton > button:active {
+    background: #3f3f46 !important;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+[data-testid="stForm"] {
+    border: none !important;
+    padding: 0 !important;
+}
+
+[data-testid="stAlert"] {
+    background: #fff1f2 !important;
+    border: 1px solid #fecdd3 !important;
+    border-radius: 8px !important;
+    font-size: 0.8125rem !important;
+    box-shadow: none !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+        login_container = st.empty()
+        _, col, _ = st.columns([1, 1, 1])
+        with col:
+            st.markdown("""
+<div class="login-header">
+  <div class="login-logo">
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+         fill="none" stroke="white" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/>
+    </svg>
+  </div>
+  <div class="login-title">Apex CRM</div>
+  <div class="login-subtitle">Enter your password to continue</div>
+</div>
+""", unsafe_allow_html=True)
+
+            with st.form("login_form", clear_on_submit=True):
+                password = st.text_input("Password", type="password", placeholder="Password", label_visibility="collapsed")
+                submitted = st.form_submit_button("Continue", use_container_width=True)
+
+            if submitted:
+                if password == os.getenv("APP_PASSWORD", "apex2026"):
+                    st.session_state.authenticated = True
+                    login_container.empty()
+                    st.rerun()
+                else:
+                    st.error("Incorrect password. Please try again.")
+
+        st.stop()
+
+check_password()
+
+# ── RATE LIMITING ─────────────────────────────────────────────────────────────
+if "request_count" not in st.session_state:
+    st.session_state.request_count = 0
+
+MAX_REQUESTS = 20
+
+if st.session_state.request_count >= MAX_REQUESTS:
+    st.error("You've reached the demo limit of 20 questions. Contact me at hello@keenancarroll.com for full access.")
+    st.stop()
+
 # ── SVG ICONS ─────────────────────────────────────────────────────────────────
 def icon(name, size=16, color="currentColor"):
     paths = {
@@ -552,9 +697,9 @@ if query:
     with st.chat_message("assistant"):
         with st.spinner("Researching..."):
             try:
-                result = agent_executor.invoke({"input": query})
-                answer = result["output"]
+                answer = agent_executor(query)
             except Exception as e:
                 answer = f"Something went wrong: {str(e)}"
         st.write(answer)
+        st.session_state.request_count += 1
         st.session_state.messages.append({"role": "assistant", "content": answer})
